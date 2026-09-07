@@ -340,10 +340,7 @@ public sealed class ScreenSharePublisher : IAsyncDisposable
             sdp = message.SignalingData,
         });
 
-        var answer = peer.createAnswer(new RTCAnswerOptions
-        {
-            X_WaitForIceGatheringToComplete = true,
-        });
+        var answer = peer.createAnswer();
 
         peer.setLocalDescription(answer);
 

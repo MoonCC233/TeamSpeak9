@@ -328,11 +328,7 @@ public sealed class ScreenVideoEncoder : IDisposable
         {
             FFmpegInit.Initialise(logLevel: null, libPath: null, appLogger: null);
 
-            if (!FFmpegInit.EnsureBinariesRegistered())
-            {
-                return false;
-            }
-
+            // In SIPSorcery 10.x, Initialise registers binaries automatically
             // A throwaway encoder is enough to confirm the codec exists; SetCodec returns false
             // when the name is absent without resetting anything.
             using var probe = new FFmpegVideoEncoder();
