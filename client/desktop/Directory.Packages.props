@@ -41,7 +41,7 @@
          through its own .targets, so unlike FFmpeg it needs no CI download step. This is the
          fallback encoder when the native FFmpeg binaries are absent; see
          third_party/native/README.md. -->
-    <PackageVersion Include="SIPSorceryMedia.Encoders" Version="10.0.5" />
+    <PackageVersion Include="SIPSorceryMedia.Encoders" Version="10.0.4" />
     <PackageVersion Include="SIPSorceryMedia.FFmpeg" Version="10.0.5" />
       </ItemGroup>
 
