@@ -282,9 +282,9 @@ func (s *Session) closeWith(code websocket.StatusCode, reason string) {
 	s.closeOnce.Do(func() {
 		s.mu.Lock()
 		s.state = stateClosing
-		s.mu.Unlock()
 		s.closeCode = code
 		s.closeText = reason
+		s.mu.Unlock()
 		close(s.done)
 	})
 }
@@ -296,7 +296,9 @@ func (s *Session) Bye(code, message string) {
 }
 
 func (s *Session) finalClose() {
+	s.mu.Lock()
 	code, reason := s.closeCode, s.closeText
+	s.mu.Unlock()
 	if code == 0 {
 		code = websocket.StatusNormalClosure
 	}

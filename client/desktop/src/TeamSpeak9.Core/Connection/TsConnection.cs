@@ -100,6 +100,18 @@ public sealed class TsConnection : IAsyncDisposable
     /// <summary>Raised on the UI thread for server errors that are not the result of our own command.</summary>
     public event EventHandler<string>? ServerError;
 
+    /// <summary>
+    /// Raised on the scheduler thread once a session is usable, so the audio layer can wire its
+    /// pipes into the client.
+    /// </summary>
+    public event Action<TsFullClient>? ClientReady;
+
+    /// <summary>
+    /// Raised on the scheduler thread before a session is torn down. Skipped when the scheduler is
+    /// already gone, so handlers must also tolerate teardown arriving only through their own dispose.
+    /// </summary>
+    public event Action<TsFullClient>? ClientClosing;
+
     /// <summary>Current lifecycle state. Only written on the UI thread.</summary>
     public ConnectionState State => state;
 
@@ -213,8 +225,41 @@ public sealed class TsConnection : IAsyncDisposable
             return failure;
 
         // Connected. From here on, a disconnect means the session dropped.
-        await loop.InvokeAsync(() => StartSnapshotTimer(created)).ConfigureAwait(false);
+        await loop.InvokeAsync(() =>
+        {
+            StartSnapshotTimer(created);
+            RaiseClientReady(created);
+        }).ConfigureAwait(false);
         return null;
+    }
+
+    /// <summary>
+    /// Notifies the audio layer on the scheduler thread. A throwing handler must not fail the
+    /// connect, so failures are logged and swallowed.
+    /// </summary>
+    private void RaiseClientReady(TsFullClient created)
+    {
+        try
+        {
+            ClientReady?.Invoke(created);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "会话就绪通知的处理程序抛出异常，已忽略。");
+        }
+    }
+
+    /// <summary>Counterpart of <see cref="RaiseClientReady"/>, called before teardown.</summary>
+    private void RaiseClientClosing(TsFullClient owner)
+    {
+        try
+        {
+            ClientClosing?.Invoke(owner);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "会话关闭通知的处理程序抛出异常，已忽略。");
+        }
     }
 
     /// <summary>
@@ -441,6 +486,8 @@ public sealed class TsConnection : IAsyncDisposable
             {
                 snapshotTimer?.Disable();
                 snapshotTimer = null;
+
+                RaiseClientClosing(owner);
 
                 try
                 {

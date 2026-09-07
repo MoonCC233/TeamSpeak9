@@ -55,7 +55,25 @@ internal sealed class RecordingUiDispatcher : IUiDispatcher
         return Task.CompletedTask;
     }
 
-    /// <summary>Runs everything queued so far, on the calling thread.</summary>
+        public Task<T> InvokeAsync<T>(Func<T> func)
+        {
+            ArgumentNullException.ThrowIfNull(func);
+            var tcs = new TaskCompletionSource<T>();
+            Post(() =>
+            {
+                try
+                {
+                    tcs.SetResult(func());
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            });
+            return tcs.Task;
+        }
+
+        /// <summary>Runs everything queued so far, on the calling thread.</summary>
     public int Drain()
     {
         Action[] pending;

@@ -139,7 +139,7 @@
 因此一份几何图形能服务所有尺寸。渲染控件是 `Controls/IconGlyph.cs`，模板 `Stretch="Uniform"`，
 `StrokeThickness` 以几何自身单位计，缩放后线重视觉一致。
 
-分组：窗口按钮 4、顶栏 7、导航 10、侧栏 8、频道与成员 6、聊天 9、BBCode 工具栏 10、流媒体 6、其它 3。
+分组：窗口按钮 4、顶栏 7、导航 10、侧栏 8、频道与成员 6、聊天 9、Markdown 工具栏 10、流媒体 6、其它 3。
 
 新增图标的要求：24×24 边界、线条端点用 `Figures` 语法、只描边不填充（填充图标走
 `Icon.Filled`）、键名 `Icon.<PascalCase>`。
@@ -157,7 +157,7 @@
 │ ── 服务器 ── │ 频道树           │ 消息列表                        │
 │ ── 书签 ──   │ （成员内嵌）     │                                 │
 │              │                  │ ─────────────────────────────── │
-│ 自己 + 设置  │ 创建频道/开始直播│ BBCode 工具栏 + 输入框 + 发送   │
+│ 自己 + 设置  │ 创建频道/开始直播│ Markdown 工具栏 + 输入框 + 发送 │
 └──────────────┴──────────────────┴─────────────────────────────────┘
 ```
 
@@ -191,10 +191,70 @@
 ### 6.5 右栏
 
 - 标题栏：频道图标 + 名称 + `Toggle.Tab` 三选一（信息 / 聊天 / 文件）。
+- 三个页签的内容叠在同一网格行，各自用 `DataTrigger Binding="{Binding ActiveTab}"` 切
+  `Visibility`；底部输入区只在「聊天」页签出现。
+
+**聊天页签**
+
 - 消息列表：`ListBox` + `ListItem.Message`。头像、着色昵称、时间戳、气泡；同一人 5 分钟内的
-  连续消息合并（省略头像与昵称，仅悬停时显示时间）。
-- 底部：BBCode 工具栏（粗体、斜体、删除线、下划线、链接、引用、列表、代码、剧透、标题、更多）
+  连续消息合并（省略头像与昵称，仅悬停时显示时间）。消息正文按 Markdown 渲染（与官方 TS6 一致，
+  不是 TS3 的 BBCode）：解析在 `Core/Model/Markdown.cs`，渲染在 `Controls/MarkdownPresenter.cs`。
+- 底部：Markdown 工具栏（粗体 `**`、斜体 `*`、下划线 `__`、删除线 `~~`、链接、引用 `> `、
+  列表 `- `、代码 `` ` ``、剧透 `||`、标题 `# `、更多）
   + `TextBox.Multiline` 输入框（40–160px 自增）+ 表情、附件、发送。
+
+**信息页签**
+
+竖向 `ScrollViewer` + 三张 `Card`，每张卡片标题为 `Icon.Small` + `Text.SectionHeader`。
+键值行统一为 110px 标签列（`Text.BodySecondary`）+ 自适应值列（`Text.Body`，允许换行），
+由 `InfoRowTemplate` 提供；数据来自 `ShellViewModel.BuildServerRows` / `BuildChannelRows`
+两个纯函数（`internal`，便于单测）。**服务器没给的字段整行省略**，不显示空值。
+
+| 卡片 | 图标 | 字段 |
+|---|---|---|
+| 服务器 | `Icon.Server` | 名称、语音提示名、地址、在线人数（`n / max`，无上限时只显示 n）、版本、平台、协议版本、许可类型、语音加密、创建时间 |
+| 欢迎消息 | `Icon.Info` | `MarkdownPresenter` 渲染 `virtualserver_welcomemessage` |
+| 当前频道 | `Icon.Channel` | 名称、主题、语音提示名、类型、人数（`n / 上限`）、编解码器、编码质量、所需发言权限（>0 才显示）、状态、频道描述 |
+
+- 「状态」把默认频道 / 需要密码 / 强制静音 / 语音未加密四个布尔标记用「、」合并成一行，
+  避免四行近乎空白的内容。
+- 创建时间按本地时区显示；服务器未提供时（`default` 或 unix epoch）整行省略。
+- 频道描述不在键值表里：它需要单独的 `channelinfo` 往返（`channellist` 不带该字段），
+  并按 Markdown 渲染。切到信息页签或换频道时异步拉取一次，用「正在请求」标志防重入、
+  「已取得的频道 id」做判重；请求期间换了频道则在请求结束后自动补拉。
+- 未连接时只显示一句「连接服务器后显示信息」。
+
+**文件页签**
+
+浏览当前频道的文件区，三行结构：工具行（`Auto`）+ 列表（`*`）+ 未连接提示（`Auto`）。
+数据层是 `Core/Management/FileService.cs`（`ftgetfilelist` / `ftcreatedir` / `ftrenamefile` /
+`ftdeletefile` + 30033 端口的上传下载），列表行由 `ShellViewModel.BuildFileRows` 这个纯函数生成。
+
+- 工具行：`Icon.ChevronLeft` 上一层（已在根目录时禁用）、`Icon.Refresh` 刷新、
+  `Icon.FolderPlus` 新建文件夹、`Icon.Upload` 上传、`Icon.Download` 下载（仅选中文件时可用）、
+  `Icon.Edit` 重命名、`Icon.Trash` 删除（仅有选中项时可用），均为 `Button.IconSmall`；
+  中间是当前路径（`Text.BodySecondary`，根目录显示 `/`）。
+- 列表行四列：图标（目录 `Icon.Folder` / 文件 `Icon.File`，由 `DataTrigger Binding="{Binding IsFile}"`
+  切换）+ 名称 + 大小（右对齐，目录显示「文件夹」而非 `0 B`）+ 修改时间（右对齐，
+  服务器未给时留空）。双击目录进入下一层；双击命中行靠 `ItemsControl.ContainerFromElement`
+  定位，点在列表空白处不响应。
+- 三种状态文案都来自 `ShellViewModel.FilesStatus`，叠在列表区上：加载中「正在加载…」、
+  空目录「这个文件夹是空的。」、失败则显示 `CommandErrorText` 翻译后的服务器错误
+  （拿不到具体错误时回落成「无法读取文件列表。」）。传输过程中同一处显示
+  「正在下载 …」「正在上传…」。空目录的两个错误码
+  （`database_empty_result` / `file_no_files_available`）在 `FileService` 里被折叠成空列表，
+  不当成失败。
+- 新建文件夹与重命名共用 `Views/TextPromptWindow.xaml` 这个轻量输入对话框：它没有 ViewModel、
+  不进 DI 容器，由调用方直接 `new` 并传入标题、提示、按钮文案与校验委托
+  （`FileService.ValidateName`）；重命名时预选扩展名之前的部分。
+- 上传走 `OpenFileDialog`，下载走 `SaveFileDialog`，建议文件名先过
+  `FileService.SanitizeLocalName`——名字来自服务器，必须剥掉分隔符与非法字符。
+- 删除前用 `MessageBox` 二次确认，文件与文件夹两套文案。
+- 传输与命令失败的详情写进聊天日志（`AppendSystemMessage`），避免用一行状态文字盖住整个列表。
+- 切到本页签或换频道时懒加载一次根目录，靠「正在加载」标志防重入、「已列出的频道 id」判重；
+  请求期间换了频道则丢弃回包并在结束后补拉。
+- 未连接时列表为空，底部显示「连接服务器后可浏览频道文件」。
+- 消息与文件列表都不做本地持久化，重启后重新从服务器拉取。
 
 ## 7. 功能面对照
 
@@ -206,6 +266,7 @@
 | 权限编辑 | 服务器右键 → 权限 | `*groupaddperm` / `*groupdelperm` |
 | 书签管理 | 左栏书签分组 | 本地设置，不涉及服务端 |
 | 身份管理 | 设置 → 身份 | 本地 identity 存储 |
+| 频道文件浏览与传输 | 右栏「文件」页签 | `ftgetfilelist` / `ftcreatedir` / `ftrenamefile` / `ftdeletefile` + 30033 端口传输，见 [兼容性报告](tslib-ts6-compat.md) §4.7 |
 | 屏幕共享 | 中栏「开始直播」 | [TSSP v1](../protocol/tssp-v1.md) |
 
 图标写入路径有硬性限制（服务器属性只吃无符号 id、频道图标**只能**走权限而非

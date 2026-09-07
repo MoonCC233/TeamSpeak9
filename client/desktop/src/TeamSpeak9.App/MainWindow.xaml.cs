@@ -46,7 +46,11 @@ public partial class MainWindow : ShellWindow
     public static readonly RoutedUICommand EditServerCommand =
         new("服务器设置", nameof(EditServerCommand), typeof(MainWindow));
 
-    private readonly ShellViewModel? shell;
+        /// <summary>Starts screen sharing.</summary>
+        public static readonly RoutedUICommand ShareScreenCommand =
+            new("开始直播", nameof(ShareScreenCommand), typeof(MainWindow));
+
+        private readonly ShellViewModel? shell;
     private ThemeGalleryWindow? gallery;
 
     /// <summary>Design-time and XAML-loader constructor.</summary>
@@ -132,7 +136,11 @@ public partial class MainWindow : ShellWindow
             EditServerCommand,
             (_, _) => OpenServerEditor(),
             (_, e) => e.CanExecute = shell?.IsConnected == true));
-    }
+                CommandBindings.Add(new CommandBinding(
+                    ShareScreenCommand,
+                    async (_, _) => await shell?.StartScreenShareAsync()!,
+                    (_, e) => e.CanExecute = shell?.IsConnected == true && shell?.ScreenShareService?.IsSupported == true));
+            }
 
     private void OpenThemeGallery()
     {

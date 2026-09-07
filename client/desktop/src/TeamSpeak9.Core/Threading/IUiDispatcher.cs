@@ -20,6 +20,9 @@ public interface IUiDispatcher
 
     /// <summary>Queues the action and completes when it has run.</summary>
     Task InvokeAsync(Action action);
+
+    /// <summary>Queues the function and completes when it has run, returning its result.</summary>
+    Task<T> InvokeAsync<T>(Func<T> func);
 }
 
 /// <summary>
@@ -43,4 +46,10 @@ public sealed class ImmediateUiDispatcher : IUiDispatcher
         action();
         return Task.CompletedTask;
     }
-}
+
+        public Task<T> InvokeAsync<T>(Func<T> func)
+        {
+            ArgumentNullException.ThrowIfNull(func);
+            return Task.FromResult(func());
+        }
+    }

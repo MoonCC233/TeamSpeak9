@@ -1,0 +1,264 @@
+name: Desktop CI
+
+# PC 客户端（client/desktop）的构建、测试与安装包打包。
+#
+# 产出两种安装形式：
+#   1. zip 便携包    —— 自包含发布（含 .NET 8 运行时），解压即用
+#   2. Inno Setup 包 —— 带向导的安装程序，写注册表卸载项与开始菜单快捷方式
+#
+# 关键前提（都已实测确认）：
+#   · windows runner 预装 Inno Setup 6.7.x，无需 choco install
+#   · 简体中文语言文件 ChineseSimplified.isl 是非官方翻译，不随 Inno 附带，
+#     必须从 jrsoftware/issrc 的 Files/Languages/Unofficial/ 下载
+#   · libopus.dll 不入库（见 client/desktop/third_party/native/README.md），
+#     由 vcpkg 现场构建后放进 third_party/native/win-x64/，publish 会自动
+#     staging 到输出目录的 lib/x64/ 下（TSLib 的 NativeLibraryLoader 探测路径）
+#   · vendored TSLib 会产生 8 条 CS8767/CS0618/CS8618 警告，
+#     Directory.Build.props 已把 TreatWarningsAsErrors 对它关掉，不会失败
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'client/desktop/**'
+      - '.github/workflows/desktop.yml'
+  pull_request:
+    paths:
+      - 'client/desktop/**'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+  SOLUTION: client/desktop/TeamSpeak9.sln
+  APP_PROJECT: client/desktop/src/TeamSpeak9.App/TeamSpeak9.App.csproj
+  PUBLISH_DIR: client/desktop/artifacts/publish
+  INSTALLER_DIR: client/desktop/artifacts/installer
+  # Inno Setup 语言文件的兜底 tag，只在无法从 ISCC.exe 读出版本号时使用。
+  ISSRC_FALLBACK_TAG: is-6_7_1
+
+jobs:
+  build:
+    name: Test and package (win-x64)
+    runs-on: windows-latest
+
+    steps:
+      # client/mobile 子模块与 PC 端无关，不拉取，省一大截时间。
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('client/desktop/Directory.Packages.props', 'client/desktop/**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      # 版本号的唯一来源是 Directory.Build.props 的 <Version>。
+      # .iss 里的 AppVersion 是写死的（刻意不用 ISPP），所以这里顺手校验两者一致，
+      # 防止改了版本号却忘了同步安装包。
+      - name: Resolve and verify product version
+        id: version
+        shell: pwsh
+        run: |
+          $props = 'client/desktop/Directory.Build.props'
+          $xml = [xml](Get-Content $props -Raw)
+          $version = ($xml.Project.PropertyGroup.Version | Where-Object { $_ }) | Select-Object -First 1
+          if (-not $version) { throw "未能从 $props 读出 <Version>" }
+          $version = "$version".Trim()
+          Write-Host "产品版本：$version"
+
+          $iss = 'client/desktop/packaging/TeamSpeak9.iss'
+          $issText = Get-Content $iss -Raw
+          foreach ($key in 'AppVersion', 'VersionInfoVersion') {
+            if ($issText -notmatch "(?m)^$key=(.+)`$") { throw "未能从 $iss 读出 $key" }
+            $issVersion = $Matches[1].Trim()
+            if ($issVersion -ne $version) {
+              throw "版本号不一致：$props 是 $version，但 $iss 的 $key 是 $issVersion。请同步 .iss 的 AppVersion 与 VersionInfoVersion。"
+            }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore $env:SOLUTION
+
+      - name: Build (Release)
+        shell: pwsh
+        run: dotnet build $env:SOLUTION -c Release --no-restore
+
+      # 不指定 LogFileName：两个测试工程会各自生成带项目名与时间戳的
+      # trx，指定固定名会让后跑的工程覆盖先跑的结果。
+      - name: Test (Release)
+        shell: pwsh
+        run: |
+          dotnet test $env:SOLUTION -c Release --no-build `
+            --logger 'trx' `
+            --results-directory client/desktop/artifacts/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-test-results
+          path: client/desktop/artifacts/test-results
+          if-no-files-found: warn
+
+      # 必须在 publish 之前完成：csproj 的 <None Include> 带 Exists() 条件，
+      # 文件是否存在在 publish 求值那一刻才决定。
+      - name: Build libopus via vcpkg
+        id: opus
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $root = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $root -or -not (Test-Path $root)) {
+            Write-Warning "runner 上找不到 vcpkg（VCPKG_INSTALLATION_ROOT='$root'），跳过 libopus。"
+            "built=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          & "$root\vcpkg.exe" install opus:x64-windows --clean-after-build
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "vcpkg 构建 opus 失败（exit $LASTEXITCODE），本次产物将不含语音支持。"
+            "built=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          $src = "$root\installed\x64-windows\bin\opus.dll"
+          if (-not (Test-Path $src)) {
+            Write-Warning "vcpkg 成功但找不到 $src，本次产物将不含语音支持。"
+            "built=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          $destDir = 'client/desktop/third_party/native/win-x64'
+          New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+          # TSLib 的 [DllImport("libopus")] 要求文件名是 libopus.dll。
+          Copy-Item $src (Join-Path $destDir 'libopus.dll') -Force
+          Write-Host "已放置 $destDir/libopus.dll"
+          "built=true" >> $env:GITHUB_OUTPUT
+
+      # csproj 里 SelfContained 是 false（开发时用共享运行时），
+      # 这里用命令行覆盖成自包含，好让用户无需预装 .NET 8。
+      - name: Publish (self-contained win-x64)
+        shell: pwsh
+        run: |
+          dotnet publish $env:APP_PROJECT -c Release -r win-x64 --self-contained true -o $env:PUBLISH_DIR
+          $exe = Join-Path $env:PUBLISH_DIR 'TeamSpeak9.exe'
+          if (-not (Test-Path $exe)) { throw "publish 产物里没有 TeamSpeak9.exe" }
+          $opus = Join-Path $env:PUBLISH_DIR 'lib/x64/libopus.dll'
+          if ('${{ steps.opus.outputs.built }}' -eq 'true' -and -not (Test-Path $opus)) {
+            throw "libopus.dll 已就位却没有被 staging 到 lib/x64/，csproj 的 <None Include> 可能被改坏了"
+          }
+          # TSLib 是 OSL-3.0，两种分发形式都必须附带许可声明。
+          # 放在 publish 目录里，zip 与 Inno 包便一并带上。
+          Copy-Item NOTICE (Join-Path $env:PUBLISH_DIR 'NOTICE.txt') -Force
+          $count = (Get-ChildItem $env:PUBLISH_DIR -Recurse -File).Count
+          $size = [math]::Round(((Get-ChildItem $env:PUBLISH_DIR -Recurse -File | Measure-Object Length -Sum).Sum / 1MB), 1)
+          Write-Host "publish：$count 个文件，$size MB"
+
+      - name: Create portable zip
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          New-Item -ItemType Directory -Force -Path $env:INSTALLER_DIR | Out-Null
+          $zip = Join-Path $env:INSTALLER_DIR "TeamSpeak9-$version-win-x64-portable.zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::CreateFromDirectory(
+            (Resolve-Path $env:PUBLISH_DIR),
+            $zip,
+            [System.IO.Compression.CompressionLevel]::Optimal,
+            $false)
+          Write-Host "$zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB)"
+
+      # 预装的 Inno 只带官方语言包，简体中文属于 Unofficial，得自己拉。
+      # tag 从 ISCC.exe 的文件版本推导，这样 runner 镜像升级 Inno 时能自愈；
+      # 推不出来就退回 ISSRC_FALLBACK_TAG。
+      - name: Install Inno Setup Simplified Chinese language file
+        id: iscc
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            Write-Host "runner 未预装 Inno Setup，改用 Chocolatey 安装。"
+            choco install innosetup --no-progress -y
+            if (-not (Test-Path $iscc)) { throw "安装后仍找不到 $iscc" }
+          }
+          $isccVersion = (Get-Item $iscc).VersionInfo.ProductVersion
+          Write-Host "ISCC 版本：$isccVersion"
+          "path=$iscc" >> $env:GITHUB_OUTPUT
+
+          $tags = @()
+          if ("$isccVersion" -match '^(\d+)\.(\d+)\.(\d+)') {
+            $tags += "is-$($Matches[1])_$($Matches[2])_$($Matches[3])"
+          }
+          if ($tags -notcontains $env:ISSRC_FALLBACK_TAG) { $tags += $env:ISSRC_FALLBACK_TAG }
+
+          $dest = 'C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl'
+          $ok = $false
+          foreach ($tag in $tags) {
+            $url = "https://raw.githubusercontent.com/jrsoftware/issrc/$tag/Files/Languages/Unofficial/ChineseSimplified.isl"
+            Write-Host "尝试 $url"
+            $tmp = Join-Path $env:RUNNER_TEMP 'ChineseSimplified.isl'
+            curl.exe --silent --show-error --fail --location --retry 3 --output $tmp $url
+            if ($LASTEXITCODE -ne 0) { Write-Warning "下载失败（tag $tag）"; continue }
+            # 简单完整性检查：必须是 .isl 而不是 404 页面。
+            $text = Get-Content $tmp -Raw
+            if ($text -notmatch '\[LangOptions\]' -or $text -notmatch 'LanguageName') {
+              Write-Warning "下载到的内容不像 .isl（tag $tag）"
+              continue
+            }
+            Copy-Item $tmp $dest -Force
+            Write-Host "已安装 ChineseSimplified.isl（tag $tag，$([math]::Round((Get-Item $dest).Length / 1KB, 1)) KB）"
+            $ok = $true
+            break
+          }
+          if (-not $ok) {
+            throw "无法获取 ChineseSimplified.isl。若 jrsoftware/issrc 的 tag 命名有变，请更新 ISSRC_FALLBACK_TAG。"
+          }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & '${{ steps.iscc.outputs.path }}' /Qp client\desktop\packaging\TeamSpeak9.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败（exit $LASTEXITCODE）" }
+          $version = '${{ steps.version.outputs.version }}'
+          $built = Join-Path $env:INSTALLER_DIR 'TeamSpeak9-setup-win-x64.exe'
+          if (-not (Test-Path $built)) { throw "没有生成 $built" }
+          $final = Join-Path $env:INSTALLER_DIR "TeamSpeak9-$version-win-x64-setup.exe"
+          Move-Item $built $final -Force
+          Write-Host "$final ($([math]::Round((Get-Item $final).Length / 1MB, 1)) MB)"
+
+      - name: Write checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem $env:INSTALLER_DIR -File |
+            Where-Object { $_.Extension -in '.zip', '.exe' } |
+            ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
+            Set-Content (Join-Path $env:INSTALLER_DIR 'SHA256SUMS.txt') -Encoding ascii
+          Get-Content (Join-Path $env:INSTALLER_DIR 'SHA256SUMS.txt')
+
+      - name: Upload desktop packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeamSpeak9-desktop-win-x64
+          path: |
+            ${{ env.INSTALLER_DIR }}/*.zip
+            ${{ env.INSTALLER_DIR }}/*.exe
+            ${{ env.INSTALLER_DIR }}/SHA256SUMS.txt
+          if-no-files-found: error

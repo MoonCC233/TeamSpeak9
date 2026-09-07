@@ -1,0 +1,45 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="clr-namespace:TeamSpeak9.App.Controls">
+
+  <!-- ===== Markdown message ===== -->
+  <!-- A chromeless read-only RichTextBox: the message list draws the row, so the presenter only
+       contributes text. The template is a bare content host because the default RichTextBox
+       template adds a border and a scroll viewer, and a nested scroll viewer would swallow the
+       message list's wheel events. -->
+  <Style x:Key="Markdown.Message" TargetType="{x:Type controls:MarkdownPresenter}">
+    <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{StaticResource Font.Size.Body}" />
+    <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}" />
+    <Setter Property="SelectionBrush" Value="{StaticResource Brush.Accent}" />
+    <Setter Property="SelectionOpacity" Value="0.35" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Cursor" Value="Arrow" />
+    <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+    <Setter Property="VerticalScrollBarVisibility" Value="Disabled" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type controls:MarkdownPresenter}">
+          <ScrollViewer x:Name="PART_ContentHost"
+                        Focusable="False"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Disabled" />
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- Server notices and other system lines. -->
+  <Style x:Key="Markdown.Message.Muted"
+         TargetType="{x:Type controls:MarkdownPresenter}"
+         BasedOn="{StaticResource Markdown.Message}">
+    <Setter Property="Foreground" Value="{StaticResource Brush.TextSecondary}" />
+    <Setter Property="FontStyle" Value="Italic" />
+  </Style>
+
+  <Style TargetType="{x:Type controls:MarkdownPresenter}" BasedOn="{StaticResource Markdown.Message}" />
+
+</ResourceDictionary>

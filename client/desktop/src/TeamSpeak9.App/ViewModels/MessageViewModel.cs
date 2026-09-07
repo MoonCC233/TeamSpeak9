@@ -1,6 +1,7 @@
 ﻿// TeamSpeak9 - PC client
 // Licensed under the terms in the repository root.
 
+using System.Collections.Immutable;
 using TeamSpeak9.Core.Model;
 
 namespace TeamSpeak9.App.ViewModels;
@@ -25,9 +26,19 @@ public sealed class MessageViewModel
 
         Message = message;
         IsMerged = CanMerge(previous, message);
+        Blocks = Markdown.Parse(message.Text);
     }
 
     public ChatMessage Message { get; }
+
+    /// <summary>
+    /// The message parsed into Markdown blocks, as the official TS6 client renders chat.
+    /// </summary>
+    /// <remarks>
+    /// Parsed once on construction rather than lazily: the list virtualises with recycling, so a
+    /// lazy property would re-parse every time a row scrolls back into view.
+    /// </remarks>
+    public ImmutableArray<MarkdownNode> Blocks { get; }
 
     public string SenderName => Message.SenderName;
 

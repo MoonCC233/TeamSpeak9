@@ -31,6 +31,8 @@
          with the netstandard2.1 vendored TSLib's System.IO.Pipelines 8.0.0. -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
+    <!-- WASAPI capture/render. Windows-only, so it lives here rather than in Core. -->
+    <PackageReference Include="NAudio.Wasapi" />
     <PackageReference Include="NLog" />
     <PackageReference Include="NLog.Extensions.Logging" />
   </ItemGroup>
@@ -57,4 +59,44 @@
              Text="缺少 third_party/native/win-x64/libopus.dll，语音功能在运行时不可用。详见 third_party/native/README.md。" />
   </Target>
 
-</Project>
+    <!-- ScreenVideoEncoder uses FFmpeg.AutoGen, which loads the native FFmpeg 7.x DLLs from
+         {output}/FFmpeg/bin/x64 (FFmpegInit searches for that folder upward from the working
+         directory). The DLLs are staged here from third_party/native/win-x64 and are optional -
+         ScreenVideoEncoder falls back to the managed VP8 encoder when they are missing. -->
+    <ItemGroup>
+      <None Include="..\..\third_party\native\win-x64\avcodec-63.dll"
+            Condition="Exists('..\..\third_party\native\win-x64\avcodec-63.dll')"
+            Link="FFmpeg\bin\x64\avcodec-63.dll"
+            CopyToOutputDirectory="PreserveNewest" />
+      <None Include="..\..\third_party\native\win-x64\avdevice-63.dll"
+            Condition="Exists('..\..\third_party\native\win-x64\avdevice-63.dll')"
+            Link="FFmpeg\bin\x64\avdevice-63.dll"
+            CopyToOutputDirectory="PreserveNewest" />
+      <None Include="..\..\third_party\native\win-x64\avfilter-12.dll"
+            Condition="Exists('..\..\third_party\native\win-x64\avfilter-12.dll')"
+            Link="FFmpeg\bin\x64\avfilter-12.dll"
+            CopyToOutputDirectory="PreserveNewest" />
+      <None Include="..\..\third_party\native\win-x64\avformat-63.dll"
+            Condition="Exists('..\..\third_party\native\win-x64\avformat-63.dll')"
+            Link="FFmpeg\bin\x64\avformat-63.dll"
+            CopyToOutputDirectory="PreserveNewest" />
+      <None Include="..\..\third_party\native\win-x64\avutil-61.dll"
+            Condition="Exists('..\..\third_party\native\win-x64\avutil-61.dll')"
+            Link="FFmpeg\bin\x64\avutil-61.dll"
+            CopyToOutputDirectory="PreserveNewest" />
+      <None Include="..\..\third_party\native\win-x64\swresample-7.dll"
+            Condition="Exists('..\..\third_party\native\win-x64\swresample-7.dll')"
+            Link="FFmpeg\bin\x64\swresample-7.dll"
+            CopyToOutputDirectory="PreserveNewest" />
+      <None Include="..\..\third_party\native\win-x64\swscale-10.dll"
+            Condition="Exists('..\..\third_party\native\win-x64\swscale-10.dll')"
+            Link="FFmpeg\bin\x64\swscale-10.dll"
+            CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <Target Name="WarnOnMissingFfmpeg" BeforeTargets="Build">
+      <Warning Condition="!Exists('..\..\third_party\native\win-x64\avcodec-63.dll')"
+               Text="缺少 third_party/native/win-x64/avcodec-63.dll 等 FFmpeg 7.x 原生库，屏幕共享将回退到 VP8 编码。详见 third_party/native/README.md。" />
+    </Target>
+
+  </Project>

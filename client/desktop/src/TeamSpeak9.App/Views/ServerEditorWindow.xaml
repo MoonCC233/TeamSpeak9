@@ -226,7 +226,7 @@
                      Style="{StaticResource TextBox.Multiline}"
                      Height="110"
                      Text="{Binding WelcomeMessage}" />
-            <TextBlock Text="客户端连接成功后显示在服务器聊天窗口中，支持 BBCode。"
+            <TextBlock Text="客户端连接成功后显示在服务器聊天窗口中，支持 Markdown。"
                        Style="{StaticResource FormHint}" />
 
             <Separator Margin="0,14,0,10" />

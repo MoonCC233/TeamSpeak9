@@ -28,8 +28,9 @@ public enum ChatTarget
 /// time. That is what the official client displays too.
 /// </para>
 /// <para>
-/// <see cref="Text"/> is the raw message and may contain BBCode markup (<c>[b]</c>, <c>[url]</c>,
-/// …) as well as TeamSpeak escape sequences already undone by TSLib. Rendering is the UI's job.
+/// <see cref="Text"/> is the raw message and may contain Markdown markup (<c>**bold**</c>,
+/// <c>[label](url)</c>, …) as well as TeamSpeak escape sequences already undone by TSLib. Parsing it
+/// with <see cref="Markdown.Parse"/> and rendering it is the UI's job.
 /// </para>
 /// </remarks>
 public sealed record ChatMessage

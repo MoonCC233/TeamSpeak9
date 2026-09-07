@@ -603,7 +603,7 @@ finally { scheduler.Dispose(); }   // 少了这句进程不会退出
 | `desktop-core-connection` | ✅ 可做 | 连接 / 重连 / 频道树 / 成员 / 权限 / 文字消息 / 文件传输全部实测通过；注意 §8.4 的线程模型 |
 | `desktop-shell-layout` | ✅ 可做 | 纯 UI |
 | `desktop-channel-management` | ✅ 可做（**实现方式变更**） | 频道增删改 + 服务器信息编辑全通；**图标改走 `channeladdperm i_icon_id`**（§4.3），组图标需按 `type` 分流（§4.4）。功能范围不缩减 |
-| `desktop-chat-panel` | ✅ 可做 | `sendtextmessage` 两种 targetmode 实测通过；BBCode 为纯客户端渲染 |
+| `desktop-chat-panel` | ✅ 可做 | `sendtextmessage` 两种 targetmode 实测通过；Markdown 为纯客户端渲染 |
 | `desktop-audio` | ✅ 可做 | UDP 语音链路握手与保活已验证；具体编解码由 TSLib 的 Opus 通道负责 |
 | `desktop-stream-client` | ✅ 可做 | 走 TSSP，与 tsserver 解耦；地址可从 `virtualserver_sfu_endpoint` 自动发现（§6.2） |
 | `desktop-screen-share` | ✅ 可做 | 不依赖 tsserver 任何能力 |

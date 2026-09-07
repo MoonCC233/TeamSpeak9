@@ -67,6 +67,10 @@ public partial class App : Application
         log = services.GetRequiredService<ILogger<App>>();
         log.LogInformation("TeamSpeak9 启动，配置目录 {Root}", paths.Root);
 
+        // Resolved eagerly: its constructor is what subscribes to the connection's session
+        // notifications, and nothing else resolves it, so a lazy resolve would never happen.
+        services.GetRequiredService<Audio.AudioService>();
+
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;

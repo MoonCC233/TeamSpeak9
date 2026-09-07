@@ -3,6 +3,8 @@
 *.tmp
 .DS_Store
 Thumbs.db
+# CI 的 staging 目录（Android CI 把 APK 拷到仓库根的 artifacts/）
+/artifacts/
 
 # ---- 机密 ----
 # 绝不提交凭据、私钥、签名文件
@@ -56,3 +58,4 @@ client/desktop/third_party/native/**/*.so
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json.example
+.codegraph/

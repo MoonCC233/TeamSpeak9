@@ -7,7 +7,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using TeamSpeak9.App.ViewModels;
+using TeamSpeak9.Core.Management;
 
 namespace TeamSpeak9.App.Views;
 
@@ -108,12 +110,12 @@ public partial class ChatPanelView : UserControl
             vm.SendMessageCommand.Execute(null);
     }
 
-    private void OnBbCodeClick(object sender, RoutedEventArgs e)
+    private void OnFormatClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: string tag } || tag.Length == 0)
             return;
 
-        string updated = ShellViewModel.ApplyBbCode(
+        string updated = ShellViewModel.ApplyMarkdown(
             Composer.Text,
             Composer.SelectionStart,
             Composer.SelectionLength,
@@ -123,6 +125,16 @@ public partial class ChatPanelView : UserControl
         Composer.Text = updated;
         Composer.CaretIndex = Math.Min(caret, updated.Length);
         Composer.Focus();
+    }
+
+    /// <summary>
+    /// Opens a clicked link. Routed through the ViewModel so the http(s) check and the logging stay
+    /// in one place.
+    /// </summary>
+    private void OnLinkClicked(object? sender, string url)
+    {
+        if (DataContext is ShellViewModel vm)
+            vm.OpenUrl(url);
     }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject root)
@@ -138,5 +150,148 @@ public partial class ChatPanelView : UserControl
         }
 
         return null;
+    }
+
+    // ===== Files tab =====
+    //
+    // Click handlers rather than commands: every one of these needs a dialog owned by this
+    // window, which a view model must not reach for. The view model keeps the server side.
+
+    private async void OnFilesRefreshClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is ShellViewModel vm)
+            await vm.RefreshFilesAsync();
+    }
+
+    private async void OnFilesUpClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is ShellViewModel vm)
+            await vm.NavigateUpAsync();
+    }
+
+    private async void OnFileListDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        // The ListBox raises this for clicks on its background too, where SelectedItem is whatever
+        // was selected before, so the hit has to be traced back to a row.
+        if (DataContext is not ShellViewModel vm)
+            return;
+
+        if (e.OriginalSource is not DependencyObject source)
+            return;
+
+        // ContainerFromElement rather than a hand-rolled walk: it climbs the logical tree as well,
+        // which a Run inside the name TextBlock needs.
+        if (ItemsControl.ContainerFromElement(FileList, source) is not ListBoxItem { DataContext: FileRow row })
+            return;
+
+        await vm.OpenFolderAsync(row);
+    }
+
+    private async void OnFilesUploadClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ShellViewModel vm)
+            return;
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "上传到频道",
+            Filter = "所有文件|*.*",
+            CheckFileExists = true,
+        };
+
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true)
+            return;
+
+        await vm.UploadFileAsync(dialog.FileName);
+    }
+
+    private async void OnFilesDownloadClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ShellViewModel vm || vm.SelectedFile is not { IsFile: true } row)
+            return;
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "保存文件",
+            // The name comes from the server, so it is sanitised before it can reach the dialog.
+            FileName = FileService.SanitizeLocalName(row.Name),
+            Filter = "所有文件|*.*",
+            OverwritePrompt = true,
+        };
+
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true)
+            return;
+
+        await vm.DownloadFileAsync(row, dialog.FileName);
+    }
+
+    private async void OnFilesNewFolderClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ShellViewModel vm)
+            return;
+
+        var prompt = new TextPromptWindow(
+            "新建文件夹",
+            "文件夹名称",
+            "创建",
+            validate: FileService.ValidateName)
+        {
+            Owner = Window.GetWindow(this),
+        };
+
+        if (prompt.ShowDialog() != true)
+            return;
+
+        await vm.CreateFolderAsync(prompt.Value);
+    }
+
+    private async void OnFilesRenameClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ShellViewModel vm || vm.SelectedFile is not { } row)
+            return;
+
+        var prompt = new TextPromptWindow(
+            "重命名",
+            $"将“{row.Name}”重命名为",
+            "重命名",
+            row.Name,
+            FileService.ValidateName)
+        {
+            Owner = Window.GetWindow(this),
+        };
+
+        if (prompt.ShowDialog() != true)
+            return;
+
+        if (prompt.Value == row.Name)
+            return;
+
+        await vm.RenameFileAsync(row, prompt.Value);
+    }
+
+    private async void OnFilesDeleteClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ShellViewModel vm || vm.SelectedFile is not { } row)
+            return;
+
+        // Deleting a directory takes everything under it with it, so the two cases get different
+        // warnings.
+        string warning = row.IsFile
+            ? $"确定删除文件“{row.Name}”？"
+            : $"确定删除文件夹“{row.Name}”及其中的全部内容？";
+
+        if (MessageBox.Show(
+                Window.GetWindow(this),
+                warning,
+                "删除",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning,
+                MessageBoxResult.Cancel)
+            != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await vm.DeleteFileAsync(row);
     }
 }

@@ -168,13 +168,13 @@ public class MessageViewModelTests
     [Fact]
     public void TheUnderlyingMessageIsExposedForBinding()
     {
-        var message = Message(text: "[b]粗体[/b]");
+        var message = Message(text: "**粗体**");
         var line = new MessageViewModel(message, null);
 
         Assert.Same(message, line.Message);
         Assert.Equal("阿花", line.SenderName);
         Assert.Equal("0KAWtL7XmPtvBAoIcgVSZ2/8/wE=", line.SenderUid);
-        Assert.Equal("[b]粗体[/b]", line.Text);
+        Assert.Equal("**粗体**", line.Text);
         Assert.Equal(Noon, line.Received);
         Assert.False(line.IsFromServer);
     }
@@ -183,5 +183,34 @@ public class MessageViewModelTests
     public void AMessageWithoutASenderIdCountsAsComingFromTheServer()
     {
         Assert.True(new MessageViewModel(Message(senderId: 0), null).IsFromServer);
+    }
+
+    [Fact]
+    public void TheTextIsParsedAsMarkdown()
+    {
+        var line = new MessageViewModel(Message(text: "**粗体**"), null);
+
+        var paragraph = Assert.Single(line.Blocks);
+        Assert.Equal(MarkdownNodeKind.Paragraph, paragraph.Kind);
+
+        var bold = Assert.Single(paragraph.Children);
+        Assert.Equal(MarkdownNodeKind.Bold, bold.Kind);
+        Assert.Equal("粗体", Assert.Single(bold.Children).Text);
+    }
+
+    [Fact]
+    public void AnEmptyMessageParsesToNoBlocks()
+    {
+        Assert.Empty(new MessageViewModel(Message(text: string.Empty), null).Blocks);
+    }
+
+    [Fact]
+    public void TheParsedBlocksAreTheSameInstanceOnEveryRead()
+    {
+        // The message list virtualises with recycling, so re-parsing on every property read would
+        // put the parser on the scroll path.
+        var line = new MessageViewModel(Message(text: "# 标题"), null);
+
+        Assert.True(line.Blocks == line.Blocks);
     }
 }

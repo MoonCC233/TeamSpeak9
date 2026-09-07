@@ -1,5 +1,9 @@
 # TeamSpeak9
 
+[![Desktop CI](https://github.com/MoonCC233/TeamSpeak9/actions/workflows/desktop.yml/badge.svg)](https://github.com/MoonCC233/TeamSpeak9/actions/workflows/desktop.yml)
+[![Android CI](https://github.com/MoonCC233/TeamSpeak9/actions/workflows/android.yml/badge.svg)](https://github.com/MoonCC233/TeamSpeak9/actions/workflows/android.yml)
+[![Stream Service CI](https://github.com/MoonCC233/TeamSpeak9/actions/workflows/stream-service.yml/badge.svg)](https://github.com/MoonCC233/TeamSpeak9/actions/workflows/stream-service.yml)
+
 面向 TeamSpeak 3 / 6 服务端的双端客户端项目，并附带一个用于**屏幕共享**的旁挂流媒体服务。
 
 | 组件 | 目录 | 技术栈 | 说明 |
@@ -62,6 +66,7 @@ git submodule（GPL-3.0）。若已经克隆过，补一句 `git submodule updat
 - [旁挂服务部署说明](docs/deploy/stream-service.md)
 - [TSLib ↔ TS6 服务端兼容性实测报告](docs/desktop/tslib-ts6-compat.md)
 - [PC 端 UI 还原规格](docs/desktop/ui-spec.md)
+- [持续集成与安装包构建](docs/ci.md)
 
 ## 第三方组件与许可
 

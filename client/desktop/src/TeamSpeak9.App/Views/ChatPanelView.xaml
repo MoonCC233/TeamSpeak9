@@ -5,13 +5,30 @@
              xmlns:conv="clr-namespace:TeamSpeak9.App.Converters">
 
   <!-- Right column: channel header with the three tabs, the message list, and the composer with
-       its BBCode toolbar. -->
+       its Markdown toolbar. -->
 
   <UserControl.Resources>
     <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
     <conv:ZeroToVisibilityConverter x:Key="ZeroToVisibility" />
+    <conv:EmptyToVisibilityConverter x:Key="EmptyToVisibility" />
+    <conv:NotConverter x:Key="Not" />
     <conv:NickColorConverter x:Key="NickColor" />
     <conv:EnumMatchConverter x:Key="EnumMatch" />
+
+    <!-- One label/value row on the info tab. Shared by the server and channel cards. -->
+    <DataTemplate x:Key="InfoRowTemplate">
+      <Grid Margin="0,0,0,6">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="110" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="{Binding Label}" Style="{StaticResource Text.BodySecondary}" />
+        <TextBlock Grid.Column="1"
+                   Text="{Binding Value}"
+                   Style="{StaticResource Text.Body}"
+                   TextWrapping="Wrap" />
+      </Grid>
+    </DataTemplate>
   </UserControl.Resources>
 
   <Grid Background="{StaticResource Brush.Surface}">
@@ -174,29 +191,15 @@
                 </TextBlock.Style>
               </TextBlock>
 
-              <!-- BBCode is not parsed yet; that lands with the chat panel task. Selectable so the
-                   text can be copied in the meantime. -->
-              <TextBox Grid.Row="1"
-                       Grid.Column="1"
-                       Text="{Binding Text, Mode=OneWay}"
-                       Margin="8,0,0,4"
-                       Padding="0"
-                       Background="Transparent"
-                       BorderThickness="0"
-                       IsReadOnly="True"
-                       TextWrapping="Wrap"
-                       Cursor="Arrow">
-                <TextBox.Style>
-                  <Style TargetType="TextBox">
-                    <Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}" />
-                    <Setter Property="SelectionBrush" Value="{StaticResource Brush.Accent}" />
-                    <Setter Property="Template">
-                      <Setter.Value>
-                        <ControlTemplate TargetType="TextBox">
-                          <ScrollViewer x:Name="PART_ContentHost" Focusable="False" />
-                        </ControlTemplate>
-                      </Setter.Value>
-                    </Setter>
+              <!-- Markdown rendered the way the official TS6 client does. Selectable so the text
+                   can still be copied. -->
+              <controls:MarkdownPresenter Grid.Row="1"
+                                          Grid.Column="1"
+                                          Blocks="{Binding Blocks}"
+                                          LinkClicked="OnLinkClicked"
+                                          Margin="8,0,0,4">
+                <controls:MarkdownPresenter.Style>
+                  <Style TargetType="{x:Type controls:MarkdownPresenter}" BasedOn="{StaticResource Markdown.Message}">
                     <Style.Triggers>
                       <DataTrigger Binding="{Binding IsFromServer}" Value="True">
                         <Setter Property="Foreground" Value="{StaticResource Brush.TextSecondary}" />
@@ -204,8 +207,8 @@
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
-                </TextBox.Style>
-              </TextBox>
+                </controls:MarkdownPresenter.Style>
+              </controls:MarkdownPresenter>
             </Grid>
           </DataTemplate>
         </ListBox.ItemTemplate>
@@ -218,13 +221,13 @@
                  Visibility="{Binding Messages.Count, Converter={StaticResource ZeroToVisibility}}" />
     </Grid>
 
-    <!-- Info and Files are placeholders until their own tasks. -->
-    <TextBlock Grid.Row="1"
-               Text="服务器与频道信息将在此显示"
-               HorizontalAlignment="Center"
-               VerticalAlignment="Center">
-      <TextBlock.Style>
-        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.BodySecondary}">
+    <!-- ===== Info ===== -->
+    <ScrollViewer Grid.Row="1"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  Padding="14,12">
+      <ScrollViewer.Style>
+        <Style TargetType="ScrollViewer">
           <Setter Property="Visibility" Value="Collapsed" />
           <Style.Triggers>
             <DataTrigger Binding="{Binding ActiveTab}" Value="Info">
@@ -232,15 +235,94 @@
             </DataTrigger>
           </Style.Triggers>
         </Style>
-      </TextBlock.Style>
-    </TextBlock>
+      </ScrollViewer.Style>
 
-    <TextBlock Grid.Row="1"
-               Text="频道文件将在此显示"
-               HorizontalAlignment="Center"
-               VerticalAlignment="Center">
-      <TextBlock.Style>
-        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.BodySecondary}">
+      <StackPanel>
+        <TextBlock Text="连接服务器后显示信息"
+                   Style="{StaticResource Text.BodySecondary}"
+                   HorizontalAlignment="Center"
+                   Margin="0,24,0,0"
+                   Visibility="{Binding IsDisconnected, Converter={StaticResource BoolToVisibility}}" />
+
+        <!-- Server facts -->
+        <Border Style="{StaticResource Card}"
+                Padding="14,12"
+                Margin="0,0,0,10"
+                Visibility="{Binding HasServerInfo, Converter={StaticResource BoolToVisibility}}">
+          <StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+              <controls:IconGlyph Style="{StaticResource Icon.Small}"
+                                  Data="{StaticResource Icon.Server}"
+                                  Foreground="{StaticResource Brush.TextSecondary}"
+                                  VerticalAlignment="Center" />
+              <TextBlock Text="服务器"
+                         Style="{StaticResource Text.SectionHeader}"
+                         Margin="8,0,0,0"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+            <ItemsControl ItemsSource="{Binding ServerInfoRows}"
+                          ItemTemplate="{StaticResource InfoRowTemplate}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Welcome message, rendered as Markdown like every other server text -->
+        <Border Style="{StaticResource Card}"
+                Padding="14,12"
+                Margin="0,0,0,10"
+                Visibility="{Binding HasWelcomeMessage, Converter={StaticResource BoolToVisibility}}">
+          <StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+              <controls:IconGlyph Style="{StaticResource Icon.Small}"
+                                  Data="{StaticResource Icon.Info}"
+                                  Foreground="{StaticResource Brush.TextSecondary}"
+                                  VerticalAlignment="Center" />
+              <TextBlock Text="欢迎消息"
+                         Style="{StaticResource Text.SectionHeader}"
+                         Margin="8,0,0,0"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+            <controls:MarkdownPresenter Blocks="{Binding WelcomeBlocks}"
+                                        LinkClicked="OnLinkClicked" />
+          </StackPanel>
+        </Border>
+
+        <!-- Current channel -->
+        <Border Style="{StaticResource Card}"
+                Padding="14,12"
+                Visibility="{Binding HasChannelInfo, Converter={StaticResource BoolToVisibility}}">
+          <StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+              <controls:IconGlyph Style="{StaticResource Icon.Small}"
+                                  Data="{StaticResource Icon.Channel}"
+                                  Foreground="{StaticResource Brush.TextSecondary}"
+                                  VerticalAlignment="Center" />
+              <TextBlock Text="当前频道"
+                         Style="{StaticResource Text.SectionHeader}"
+                         Margin="8,0,0,0"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+            <ItemsControl ItemsSource="{Binding ChannelInfoRows}"
+                          ItemTemplate="{StaticResource InfoRowTemplate}" />
+
+            <!-- The description needs its own channelinfo request, so it can lag behind the rows. -->
+            <StackPanel Margin="0,4,0,0"
+                        Visibility="{Binding HasChannelDescription, Converter={StaticResource BoolToVisibility}}">
+              <Separator Margin="0,4,0,8" />
+              <TextBlock Text="频道描述"
+                         Style="{StaticResource Text.Caption}"
+                         Margin="0,0,0,6" />
+              <controls:MarkdownPresenter Blocks="{Binding ChannelDescriptionBlocks}"
+                                          LinkClicked="OnLinkClicked" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- ===== Files ===== -->
+    <Grid Grid.Row="1">
+      <Grid.Style>
+        <Style TargetType="Grid">
           <Setter Property="Visibility" Value="Collapsed" />
           <Style.Triggers>
             <DataTrigger Binding="{Binding ActiveTab}" Value="Files">
@@ -248,8 +330,168 @@
             </DataTrigger>
           </Style.Triggers>
         </Style>
-      </TextBlock.Style>
-    </TextBlock>
+      </Grid.Style>
+
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <!-- Toolbar: navigation on the left, the current path in the middle, actions on the right. -->
+      <Border Grid.Row="0"
+              BorderBrush="{StaticResource Brush.BorderSubtle}"
+              BorderThickness="0,0,0,1"
+              Padding="10,6">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <Button Grid.Column="0"
+                  x:Name="FilesUpButton"
+                  Style="{StaticResource Button.IconSmall}"
+                  Click="OnFilesUpClick"
+                  IsEnabled="{Binding IsAtFilesRoot, Converter={StaticResource Not}}"
+                  ToolTip="上一层">
+            <controls:IconGlyph Data="{StaticResource Icon.ChevronLeft}" Style="{StaticResource Icon.Small}" />
+          </Button>
+
+          <TextBlock Grid.Column="1"
+                     Text="{Binding FilesPath}"
+                     Style="{StaticResource Text.Caption}"
+                     Margin="8,0"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis"
+                     ToolTip="{Binding FilesPath}" />
+
+          <StackPanel Grid.Column="2" Orientation="Horizontal">
+            <Button x:Name="FilesRefreshButton"
+                    Style="{StaticResource Button.IconSmall}"
+                    Click="OnFilesRefreshClick"
+                    IsEnabled="{Binding IsConnected}"
+                    ToolTip="刷新">
+              <controls:IconGlyph Data="{StaticResource Icon.Refresh}" Style="{StaticResource Icon.Small}" />
+            </Button>
+            <Button x:Name="FilesNewFolderButton"
+                    Style="{StaticResource Button.IconSmall}"
+                    Click="OnFilesNewFolderClick"
+                    IsEnabled="{Binding IsConnected}"
+                    ToolTip="新建文件夹">
+              <controls:IconGlyph Data="{StaticResource Icon.FolderPlus}" Style="{StaticResource Icon.Small}" />
+            </Button>
+            <Button x:Name="FilesUploadButton"
+                    Style="{StaticResource Button.IconSmall}"
+                    Click="OnFilesUploadClick"
+                    IsEnabled="{Binding IsConnected}"
+                    ToolTip="上传文件">
+              <controls:IconGlyph Data="{StaticResource Icon.Upload}" Style="{StaticResource Icon.Small}" />
+            </Button>
+            <Button x:Name="FilesDownloadButton"
+                    Style="{StaticResource Button.IconSmall}"
+                    Click="OnFilesDownloadClick"
+                    IsEnabled="{Binding CanDownloadFile}"
+                    ToolTip="下载所选文件">
+              <controls:IconGlyph Data="{StaticResource Icon.Download}" Style="{StaticResource Icon.Small}" />
+            </Button>
+            <Button x:Name="FilesRenameButton"
+                    Style="{StaticResource Button.IconSmall}"
+                    Click="OnFilesRenameClick"
+                    IsEnabled="{Binding HasFileSelection}"
+                    ToolTip="重命名">
+              <controls:IconGlyph Data="{StaticResource Icon.Edit}" Style="{StaticResource Icon.Small}" />
+            </Button>
+            <Button x:Name="FilesDeleteButton"
+                    Style="{StaticResource Button.IconSmall}"
+                    Click="OnFilesDeleteClick"
+                    IsEnabled="{Binding HasFileSelection}"
+                    ToolTip="删除">
+              <controls:IconGlyph Data="{StaticResource Icon.Trash}" Style="{StaticResource Icon.Small}" />
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- The implicit ListBox style already virtualises and brings its own ScrollViewer. -->
+      <ListBox x:Name="FileList"
+               Grid.Row="1"
+               ItemsSource="{Binding FileRows}"
+               SelectedItem="{Binding SelectedFile, Mode=TwoWay}"
+               Padding="8,6"
+               ItemContainerStyle="{StaticResource ListItem.Base}"
+               MouseDoubleClick="OnFileListDoubleClick">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+
+              <controls:IconGlyph Grid.Column="0" VerticalAlignment="Center">
+                <controls:IconGlyph.Style>
+                  <!-- BasedOn rather than the Style attribute: a DataTrigger cannot be attached to
+                       an attribute-set style. -->
+                  <Style TargetType="{x:Type controls:IconGlyph}" BasedOn="{StaticResource Icon.Small}">
+                    <Setter Property="Data" Value="{StaticResource Icon.Folder}" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsFile}" Value="True">
+                        <Setter Property="Data" Value="{StaticResource Icon.File}" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </controls:IconGlyph.Style>
+              </controls:IconGlyph>
+
+              <TextBlock Grid.Column="1"
+                         Text="{Binding Name}"
+                         Style="{StaticResource Text.Body}"
+                         Margin="8,0,8,0"
+                         VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip="{Binding Path}" />
+
+              <TextBlock Grid.Column="2"
+                         Text="{Binding SizeText}"
+                         Style="{StaticResource Text.Caption}"
+                         MinWidth="72"
+                         TextAlignment="Right"
+                         VerticalAlignment="Center" />
+
+              <TextBlock Grid.Column="3"
+                         Text="{Binding ModifiedText}"
+                         Style="{StaticResource Text.Caption}"
+                         MinWidth="112"
+                         Margin="12,0,0,0"
+                         TextAlignment="Right"
+                         VerticalAlignment="Center" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <!-- Empty, loading and error all land here, so the list itself never shows a fake row. -->
+      <TextBlock Grid.Row="1"
+                 Text="{Binding FilesStatus}"
+                 Style="{StaticResource Text.BodySecondary}"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 Margin="24,0"
+                 TextWrapping="Wrap"
+                 TextAlignment="Center"
+                 Visibility="{Binding FilesStatus, Converter={StaticResource EmptyToVisibility}}" />
+
+      <TextBlock Grid.Row="2"
+                 Text="连接服务器后可浏览频道文件"
+                 Style="{StaticResource Text.Caption}"
+                 HorizontalAlignment="Center"
+                 Margin="0,0,0,10"
+                 Visibility="{Binding IsDisconnected, Converter={StaticResource BoolToVisibility}}" />
+    </Grid>
 
     <!-- ===== Composer ===== -->
     <Border Grid.Row="2"
@@ -268,18 +510,19 @@
       </Border.Style>
 
       <StackPanel>
-        <!-- BBCode toolbar. Tag carries the tag name so one handler covers all of them. -->
+        <!-- Markdown toolbar, matching the official TS6 client. Tag carries the Markdown token so
+             one handler covers all of them: a delimiter wraps, a trailing space means block marker. -->
         <WrapPanel>
-          <Button Style="{StaticResource Button.IconSmall}" Tag="b" Click="OnBbCodeClick" ToolTip="粗体">
+          <Button Style="{StaticResource Button.IconSmall}" Tag="**" Click="OnFormatClick" ToolTip="粗体">
             <controls:IconGlyph Data="{StaticResource Icon.Bold}" Style="{StaticResource Icon.Small}" />
           </Button>
-          <Button Style="{StaticResource Button.IconSmall}" Tag="i" Click="OnBbCodeClick" ToolTip="斜体">
+          <Button Style="{StaticResource Button.IconSmall}" Tag="*" Click="OnFormatClick" ToolTip="斜体">
             <controls:IconGlyph Data="{StaticResource Icon.Italic}" Style="{StaticResource Icon.Small}" />
           </Button>
-          <Button Style="{StaticResource Button.IconSmall}" Tag="u" Click="OnBbCodeClick" ToolTip="下划线">
+          <Button Style="{StaticResource Button.IconSmall}" Tag="__" Click="OnFormatClick" ToolTip="下划线">
             <controls:IconGlyph Data="{StaticResource Icon.Underline}" Style="{StaticResource Icon.Small}" />
           </Button>
-          <Button Style="{StaticResource Button.IconSmall}" Tag="s" Click="OnBbCodeClick" ToolTip="删除线">
+          <Button Style="{StaticResource Button.IconSmall}" Tag="~~" Click="OnFormatClick" ToolTip="删除线">
             <controls:IconGlyph Data="{StaticResource Icon.Strikethrough}" Style="{StaticResource Icon.Small}" />
           </Button>
           <Border Width="1"
@@ -287,22 +530,22 @@
                   Margin="6,0"
                   VerticalAlignment="Center"
                   Background="{StaticResource Brush.BorderSubtle}" />
-          <Button Style="{StaticResource Button.IconSmall}" Tag="url" Click="OnBbCodeClick" ToolTip="链接">
+          <Button Style="{StaticResource Button.IconSmall}" Tag="link" Click="OnFormatClick" ToolTip="链接">
             <controls:IconGlyph Data="{StaticResource Icon.Link}" Style="{StaticResource Icon.Small}" />
           </Button>
-          <Button Style="{StaticResource Button.IconSmall}" Tag="quote" Click="OnBbCodeClick" ToolTip="引用">
+          <Button Style="{StaticResource Button.IconSmall}" Tag="&gt; " Click="OnFormatClick" ToolTip="引用">
             <controls:IconGlyph Data="{StaticResource Icon.Quote}" Style="{StaticResource Icon.Small}" />
           </Button>
-          <Button Style="{StaticResource Button.IconSmall}" Tag="list" Click="OnBbCodeClick" ToolTip="列表">
+          <Button Style="{StaticResource Button.IconSmall}" Tag="- " Click="OnFormatClick" ToolTip="列表">
             <controls:IconGlyph Data="{StaticResource Icon.List}" Style="{StaticResource Icon.Small}" />
           </Button>
-          <Button Style="{StaticResource Button.IconSmall}" Tag="code" Click="OnBbCodeClick" ToolTip="代码">
+          <Button Style="{StaticResource Button.IconSmall}" Tag="`" Click="OnFormatClick" ToolTip="代码">
             <controls:IconGlyph Data="{StaticResource Icon.Code}" Style="{StaticResource Icon.Small}" />
           </Button>
-          <Button Style="{StaticResource Button.IconSmall}" Tag="spoiler" Click="OnBbCodeClick" ToolTip="剧透">
+          <Button Style="{StaticResource Button.IconSmall}" Tag="||" Click="OnFormatClick" ToolTip="剧透">
             <controls:IconGlyph Data="{StaticResource Icon.Spoiler}" Style="{StaticResource Icon.Small}" />
           </Button>
-          <Button Style="{StaticResource Button.IconSmall}" Tag="h1" Click="OnBbCodeClick" ToolTip="标题">
+          <Button Style="{StaticResource Button.IconSmall}" Tag="# " Click="OnFormatClick" ToolTip="标题">
             <controls:IconGlyph Data="{StaticResource Icon.Heading}" Style="{StaticResource Icon.Small}" />
           </Button>
           <Button Style="{StaticResource Button.IconSmall}" ToolTip="更多" IsEnabled="False">

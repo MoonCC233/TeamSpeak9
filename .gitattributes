@@ -29,6 +29,7 @@ Dockerfile  text eol=lf
 *.ps1       text eol=crlf
 *.sln       text eol=crlf
 *.csproj    text eol=crlf
+*.iss       text eol=crlf
 
 # 二进制文件不做行尾转换，也不参与 diff。
 *.png       binary

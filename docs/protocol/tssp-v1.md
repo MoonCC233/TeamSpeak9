@@ -465,6 +465,21 @@ NONE ──subscribe──► PENDING(invite_only) ──respond_join accept─�
 | DTLS-SRTP | 强制。`DTLS_SRTP_AES128_CM_HMAC_SHA1_80` 及以上 |
 | ICE | 强制 `ice-lite: false`；服务端提供 STUN，TURN 可选但强烈建议（对称 NAT） |
 
+### 9.1 Payload type 分配
+
+因为 SFU 不转码，payload type 必须在实现之间固定下来。P2P 模式尤其重要：两端直接交换 SDP，中间没有任何一跳会替它们重映射编号。
+
+| 编解码 | Payload type | `fmtp` |
+|---|---|---|
+| H.264 constrained baseline | **102** | `level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f` |
+| H.264 high | **108** | `level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=640c1f` |
+| VP8 | **96** | — |
+| Opus | **111** | `minptime=10;useinbandfec=1`（48 kHz、2 声道） |
+
+编号沿用 WebRTC 生态惯例（与 Chrome 常用值一致）。规范实现见服务端 `internal/sfu/engine.go` 的 `registerCodecs`；客户端侧对应 PC 端 `StreamCodecs`。发布端只需实现 102 与 96 两档，108 仅用于接收其它实现推来的 high profile。
+
+> **注意**：SFU 转发订阅方向时会用服务端 MediaEngine 的编号重新生成 SDP，因此 SFU 模式下的编号不一致只会被静默吸收；一旦回落 P2P 就会直接失败。不要依赖这种吸收行为。
+
 ---
 
 ## 10. P2P 与 SFU 的回落策略

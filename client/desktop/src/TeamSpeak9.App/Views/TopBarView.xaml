@@ -76,12 +76,12 @@
               Click="OnOpenInputMenu">
         <controls:IconGlyph Data="{StaticResource Icon.ChevronDown}" Style="{StaticResource Icon.Small}" />
         <Button.ContextMenu>
-          <!-- Placement is set in code so the menu opens under the arrow rather than at the cursor. -->
-          <ContextMenu x:Name="InputMenu" Placement="Bottom">
-            <MenuItem Header="默认输入设备" IsCheckable="True" IsChecked="True" />
-            <Separator />
-            <MenuItem Header="音频设置…" IsEnabled="False" ToolTip="将在音频设置中提供" />
-          </ContextMenu>
+          <!-- Placement is set in code so the menu opens under the arrow rather than at the cursor.
+               Rows come from the shell; each one carries its own Command via MenuItem.AudioDevice. -->
+          <ContextMenu x:Name="InputMenu"
+                       Placement="Bottom"
+                       ItemsSource="{Binding InputDevices}"
+                       ItemContainerStyle="{StaticResource MenuItem.AudioDevice}" />
         </Button.ContextMenu>
       </Button>
     </StackPanel>
@@ -129,11 +129,10 @@
               Click="OnOpenOutputMenu">
         <controls:IconGlyph Data="{StaticResource Icon.ChevronDown}" Style="{StaticResource Icon.Small}" />
         <Button.ContextMenu>
-          <ContextMenu x:Name="OutputMenu" Placement="Bottom">
-            <MenuItem Header="默认输出设备" IsCheckable="True" IsChecked="True" />
-            <Separator />
-            <MenuItem Header="音频设置…" IsEnabled="False" ToolTip="将在音频设置中提供" />
-          </ContextMenu>
+          <ContextMenu x:Name="OutputMenu"
+                       Placement="Bottom"
+                       ItemsSource="{Binding OutputDevices}"
+                       ItemContainerStyle="{StaticResource MenuItem.AudioDevice}" />
         </Button.ContextMenu>
       </Button>
       </StackPanel>

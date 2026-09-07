@@ -1,0 +1,120 @@
+name: Stream Service CI
+
+# 旁挂流媒体服务（server/ts9-stream）的构建、静态检查、测试与二进制打包。
+#
+# 说明：
+#   · 服务不使用 cgo，交叉编译产出完全静态的二进制（见 docs/deploy/stream-service.md §4.2）
+#   · 但 -race 依赖 cgo，所以测试步骤显式打开 CGO_ENABLED=1，
+#     打包步骤再关掉
+#   · go.mod 声明 go 1.25.0，用 go-version-file 让工具链版本跟着仓库走
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'server/ts9-stream/**'
+      - '.github/workflows/stream-service.yml'
+  pull_request:
+    paths:
+      - 'server/ts9-stream/**'
+      - '.github/workflows/stream-service.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: stream-service-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: server/ts9-stream
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/ts9-stream/go.mod
+          cache-dependency-path: server/ts9-stream/go.sum
+
+      - name: Verify module tidiness
+        run: |
+          go mod verify
+          go mod download
+
+      - name: Check gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "以下文件未经 gofmt 格式化：" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test (race detector)
+        env:
+          CGO_ENABLED: '1'
+        run: go test -race -count=1 ./...
+
+      # 版本号取自 main.go 的 var version 默认值去掉 -dev 后缀，
+      # 与 docs/deploy/stream-service.md §4.1 的 -ldflags 用法保持一致。
+      - name: Resolve version
+        id: version
+        run: |
+          version=$(grep -oP 'var version = "\K[^"]+' cmd/ts9-stream/main.go)
+          version=${version%-dev}
+          if [ -z "$version" ]; then
+            echo "未能从 cmd/ts9-stream/main.go 读出 version" >&2
+            exit 1
+          fi
+          echo "版本：$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cross-compile release binaries
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          version='${{ steps.version.outputs.version }}'
+          mkdir -p dist
+          build() {
+            local goos=$1 goarch=$2 ext=${3:-}
+            echo "==> $goos/$goarch"
+            GOOS=$goos GOARCH=$goarch go build -trimpath \
+              -ldflags "-s -w -X main.version=$version" \
+              -o "dist/ts9-stream-$version-$goos-$goarch$ext" ./cmd/ts9-stream
+          }
+          build linux amd64
+          build linux arm64
+          build windows amd64 .exe
+          cp config.example.yaml dist/
+          cp ../../docs/deploy/stream-service.md dist/
+          cd dist
+          # 覆盖所有可分发文件（二进制、配置示例、部署文档），排除 SHA256SUMS.txt 本身。
+          sha256sum * > SHA256SUMS.txt
+          ls -lh
+          cat SHA256SUMS.txt
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ts9-stream-${{ steps.version.outputs.version }}
+          path: server/ts9-stream/dist
+          if-no-files-found: error

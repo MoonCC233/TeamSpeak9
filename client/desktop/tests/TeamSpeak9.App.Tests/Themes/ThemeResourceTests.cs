@@ -39,6 +39,7 @@ public class ThemeResourceTests
         "Controls/Inputs.xaml",
         "Controls/Lists.xaml",
         "Controls/Surfaces.xaml",
+        "Controls/Markdown.xaml",
         "Window.xaml",
     ];
 
@@ -255,9 +256,33 @@ public class ThemeResourceTests
     [InlineData("ListItem.Message")]
     [InlineData("Card")]
     [InlineData("Text.Body")]
+    [InlineData("Text.SectionHeader")]
+    [InlineData("Text.Caption")]
+    [InlineData("Markdown.Message")]
+    [InlineData("MenuItem.AudioDevice")]
     public void TheStylesTheShellBindsToExist(string key)
     {
         Sta.Run(() => Assert.IsAssignableFrom<Style>(LoadApplicationResources()[key]));
+    }
+
+    [Fact]
+    public void TheAudioDeviceRowDrawsItsCheckMarkFromAHeaderTemplate()
+    {
+        // The shared MenuItem template has no check glyph, so the marker has to come from the
+        // header template. A Setter.Value element would be shared across rows and throw on the
+        // second one, which is why this asserts a DataTemplate rather than any visual.
+        Sta.Run(() =>
+        {
+            var style = (Style)LoadApplicationResources()["MenuItem.AudioDevice"];
+
+            Assert.Equal(typeof(System.Windows.Controls.MenuItem), style.TargetType);
+
+            var header = style.Setters
+                .OfType<Setter>()
+                .Single(s => s.Property == System.Windows.Controls.HeaderedItemsControl.HeaderTemplateProperty);
+
+            Assert.IsType<DataTemplate>(header.Value);
+        });
     }
 
     [Fact]
