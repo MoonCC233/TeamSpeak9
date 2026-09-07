@@ -171,6 +171,10 @@ public sealed record TsspClientCapabilities
     /// <summary>可同时接收的流数量。</summary>
     [JsonPropertyName("max_recv_streams")]
     public int MaxRecvStreams { get; init; }
+
+    /// <summary>最大接收码率（kbps）。</summary>
+    [JsonPropertyName("max_bitrate_kbps")]
+    public int MaxBitrateKbps { get; init; }
 }
 
 /// <summary>客户端自报的软件信息，仅用于服务端日志。</summary>

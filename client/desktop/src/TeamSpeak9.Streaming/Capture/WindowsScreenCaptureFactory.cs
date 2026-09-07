@@ -14,7 +14,7 @@ namespace TeamSpeak9.Streaming.Capture;
 /// <see langword="true"/>. A Windows.Graphics.Capture backend can be swapped in later without
 /// touching the <see cref="IScreenCaptureFactory"/> contract.
 /// </remarks>
-internal sealed class WindowsScreenCaptureFactory : IScreenCaptureFactory
+public sealed class WindowsScreenCaptureFactory : IScreenCaptureFactory
 {
     private readonly ILogger _log;
 

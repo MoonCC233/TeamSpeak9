@@ -58,3 +58,4 @@ client/desktop/third_party/native/**/*.so
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json.example
+.codegraph/

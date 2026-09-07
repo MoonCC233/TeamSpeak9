@@ -345,8 +345,8 @@
                 Style="{StaticResource Button.Primary}"
                 Margin="8,0,0,0"
                 HorizontalAlignment="Left"
-                IsEnabled="False"
-                ToolTip="共享屏幕（将在屏幕共享中提供）">
+                        Command="{x:Static local:MainWindow.ShareScreenCommand}"
+                        ToolTip="共享屏幕">
           <StackPanel Orientation="Horizontal">
             <controls:IconGlyph Data="{StaticResource Icon.ScreenShare}" Style="{StaticResource Icon.Small}" />
             <TextBlock Text="开始直播" Margin="6,0,0,0" />

@@ -46,4 +46,16 @@ internal sealed class WpfUiDispatcher : IUiDispatcher
 
         return dispatcher.InvokeAsync(action).Task;
     }
-}
+
+        public Task<T> InvokeAsync<T>(Func<T> func)
+        {
+            ArgumentNullException.ThrowIfNull(func);
+
+            if (dispatcher.CheckAccess())
+            {
+                return Task.FromResult(func());
+            }
+
+            return dispatcher.InvokeAsync(func).Task;
+        }
+    }

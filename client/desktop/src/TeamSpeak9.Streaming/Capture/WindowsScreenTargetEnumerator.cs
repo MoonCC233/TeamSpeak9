@@ -20,7 +20,7 @@ namespace TeamSpeak9.Streaming.Capture;
 /// index.
 /// </para>
 /// </remarks>
-internal sealed class WindowsScreenTargetEnumerator : IScreenTargetEnumerator
+public sealed class WindowsScreenTargetEnumerator : IScreenTargetEnumerator
 {
     private readonly ILogger _log;
 

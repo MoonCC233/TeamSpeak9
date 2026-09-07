@@ -35,14 +35,14 @@
   </ItemGroup>
 
   <ItemGroup Label="Streaming (WebRTC + media)">
-    <PackageVersion Include="SIPSorcery" Version="10.0.16" />
-    <PackageVersion Include="SIPSorceryMedia.Abstractions" Version="10.0.16" />
+    <PackageVersion Include="SIPSorcery" Version="9.0.16" />
+    <PackageVersion Include="SIPSorceryMedia.Abstractions" Version="9.0.16" />
     <!-- Managed VP8 (libvpx via Vpx.Net). Ships build/x64/vpxmd.dll and copies it to the output
          through its own .targets, so unlike FFmpeg it needs no CI download step. This is the
          fallback encoder when the native FFmpeg binaries are absent; see
          third_party/native/README.md. -->
-    <PackageVersion Include="SIPSorceryMedia.Encoders" Version="10.0.4" />
-    <PackageVersion Include="SIPSorceryMedia.FFmpeg" Version="10.0.16" />
+    <PackageVersion Include="SIPSorceryMedia.Encoders" Version="9.0.16" />
+    <PackageVersion Include="SIPSorceryMedia.FFmpeg" Version="9.0.16" />
       </ItemGroup>
 
   <ItemGroup Label="Audio (WASAPI capture / render)">

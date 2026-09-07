@@ -507,8 +507,14 @@ public enum ScreenShareState
     /// <summary>Not yet started.</summary>
     Idle,
 
+    /// <summary>Connecting to the stream.</summary>
+    Connecting,
+
     /// <summary>Publishing is active.</summary>
     Publishing,
+
+    /// <summary>Playing/viewing a stream.</summary>
+    Playing,
 
     /// <summary>Publishing has stopped.</summary>
     Stopped,

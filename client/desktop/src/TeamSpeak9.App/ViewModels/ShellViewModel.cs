@@ -18,6 +18,8 @@ using TeamSpeak9.Core.Identity;
 using TeamSpeak9.Core.Management;
 using TeamSpeak9.Core.Model;
 using TeamSpeak9.Core.Settings;
+using TeamSpeak9.Core.Streaming;
+using TeamSpeak9.App.Streaming;
 using TSLib.Commands;
 
 namespace TeamSpeak9.App.ViewModels;
@@ -57,11 +59,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly SettingsStore settingsStore;
     private readonly IdentityStore identityStore;
     private readonly ILogger<ShellViewModel> log;
-    private readonly ChannelTreeState treeState = new();
+        private readonly ScreenShareService screenShareService;
 
-    private bool disposed;
-    private bool isAway;
-    private bool prefetchRunning;
+    /// <summary>Exposes the screen share service for command bindings.</summary>
+    public ScreenShareService ScreenShareService => screenShareService;
+        private readonly ChannelTreeState treeState = new();
+
+        private bool disposed;
+        private bool isAway;
+        private bool prefetchRunning;
 
     private ImmutableArray<AudioDeviceViewModel> inputDeviceRows = ImmutableArray<AudioDeviceViewModel>.Empty;
     private ImmutableArray<AudioDeviceViewModel> outputDeviceRows = ImmutableArray<AudioDeviceViewModel>.Empty;
@@ -146,35 +152,38 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         AppSettings settings,
         SettingsStore settingsStore,
         IdentityStore identityStore,
-        ILogger<ShellViewModel> log)
-    {
-        ArgumentNullException.ThrowIfNull(connection);
-        ArgumentNullException.ThrowIfNull(channels);
-        ArgumentNullException.ThrowIfNull(files);
-        ArgumentNullException.ThrowIfNull(icons);
-        ArgumentNullException.ThrowIfNull(audio);
-        ArgumentNullException.ThrowIfNull(settings);
-        ArgumentNullException.ThrowIfNull(settingsStore);
-        ArgumentNullException.ThrowIfNull(identityStore);
-        ArgumentNullException.ThrowIfNull(log);
+            ScreenShareService screenShareService,
+            ILogger<ShellViewModel> log)
+        {
+            ArgumentNullException.ThrowIfNull(connection);
+            ArgumentNullException.ThrowIfNull(channels);
+            ArgumentNullException.ThrowIfNull(files);
+            ArgumentNullException.ThrowIfNull(icons);
+            ArgumentNullException.ThrowIfNull(audio);
+            ArgumentNullException.ThrowIfNull(settings);
+            ArgumentNullException.ThrowIfNull(settingsStore);
+            ArgumentNullException.ThrowIfNull(identityStore);
+            ArgumentNullException.ThrowIfNull(screenShareService);
+            ArgumentNullException.ThrowIfNull(log);
 
-        this.connection = connection;
-        this.channels = channels;
-        this.files = files;
-        this.icons = icons;
-        this.audio = audio;
-        this.settings = settings;
-        this.settingsStore = settingsStore;
-        this.identityStore = identityStore;
-        this.log = log;
+            this.connection = connection;
+            this.channels = channels;
+            this.files = files;
+            this.icons = icons;
+            this.audio = audio;
+            this.settings = settings;
+            this.settingsStore = settingsStore;
+            this.identityStore = identityStore;
+            this.screenShareService = screenShareService;
+            this.log = log;
 
-        Bookmarks = new ObservableCollection<BookmarkViewModel>();
-        Channels = new ObservableCollection<ChannelTreeItem>();
-        Messages = new ObservableCollection<MessageViewModel>();
+            Bookmarks = new ObservableCollection<BookmarkViewModel>();
+            Channels = new ObservableCollection<ChannelTreeItem>();
+            Messages = new ObservableCollection<MessageViewModel>();
 
-        connection.StateChanged += OnStateChanged;
-        connection.SnapshotChanged += OnSnapshotChanged;
-        connection.MessageReceived += OnMessageReceived;
+            connection.StateChanged += OnStateChanged;
+            connection.SnapshotChanged += OnSnapshotChanged;
+            connection.MessageReceived += OnMessageReceived;
         connection.Poked += OnPoked;
         connection.ServerError += OnServerError;
         icons.IconCached += OnIconCached;
@@ -905,7 +914,42 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         length = Math.Clamp(length, 0, text.Length - start);
     }
 
-    public void Dispose()
+        /// <summary>
+        /// Opens the share picker and starts screen sharing with the selected target.
+        /// </summary>
+        [RelayCommand]
+        public async Task StartScreenShareAsync()
+        {
+            if (!connection.IsConnected)
+            {
+                log.LogWarning("Cannot start screen share: not connected to a server.");
+                return;
+            }
+
+            if (!screenShareService.IsSupported)
+            {
+                log.LogWarning("Screen sharing is not supported on this system.");
+                AppendSystemMessage("当前系统不支持屏幕共享功能。");
+                return;
+            }
+
+            try
+            {
+                await screenShareService.StartAsync();
+            }
+            catch (OperationCanceledException)
+            {
+                // User cancelled the share picker - not an error
+                log.LogInformation("Screen share cancelled by user.");
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Failed to start screen share.");
+                AppendSystemMessage($"开始屏幕共享失败：{ex.Message}");
+            }
+        }
+
+        public void Dispose()
     {
         if (disposed)
             return;
